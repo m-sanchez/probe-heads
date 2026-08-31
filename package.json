@@ -1,0 +1,23 @@
+{
+  "name": "probe-heads",
+  "version": "1.0.0",
+  "description": "Reproducible probing of frozen embeddings: deterministic one-vs-rest logistic heads, leakage-safe scaling, thresholds chosen on validation, holdout touched once.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist", "src"],
+  "scripts": {
+    "test": "node --test \"test/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
+    "demo": "node demo/demo.ts"
+  },
+  "repository": { "type": "git", "url": "git+https://github.com/m-sanchez/probe-heads.git" },
+  "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
+  "license": "MIT",
+  "keywords": ["probing", "logistic-regression", "embeddings", "machine-learning", "reproducible", "threshold-selection", "classification", "typescript"],
+  "engines": { "node": ">=22.18" },
+  "devDependencies": { "@types/node": "^26.4.0", "typescript": "^5.7.0" }
+}
