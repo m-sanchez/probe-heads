@@ -11,7 +11,8 @@
 
 Reproducible probing of frozen embeddings: deterministic one-vs-rest
 logistic heads, leakage-safe scaling, thresholds chosen on validation, the
-holdout kept out of training. Zero dependencies.
+holdout kept out of training, and every F1 reported against a
+permuted-label control so you can tell it from noise. Zero dependencies.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
 
@@ -96,9 +97,11 @@ asked.
   drift between engines, shows up as a reviewable diff instead of quietly
   invalidating every probe number you have stored.
 - **Thresholds on validation, not the test set.** A logistic head emits a
-  probability; the yes/no cut is chosen to maximise F1 on validation
-  (0.5 is rarely right for a rare label), never on train and never on the
-  holdout.
+  score - not a calibrated probability, since the head is L2-regularised
+  and the cut is deliberately moved off 0.5, so rank it and threshold it
+  rather than reading it as a likelihood. The yes/no cut is chosen to
+  maximise F1 on validation (0.5 is rarely right for a rare label), never
+  on train and never on the holdout.
 - **Fail closed on shape.** The model records the feature width it was fit
   on, and every split is checked against it. A holdout of the wrong width
   used to return `macroF1: 0` - a shape bug served as the conclusion "not
@@ -121,14 +124,15 @@ asked.
   features can recover, which is exactly the question probes are for. It is
   not a classifier to ship, and a low score means "not linearly readable",
   not "not present".
-- **The default epoch budget is sized for small problems.** Full-batch
-  gradient descent for 300 epochs solves the demo's 6-D objective to a
-  gradient norm of 1.9e-13, but at d=64 it stops at 8.7e-4 and at d=768 at
-  5.6e-3 - underfit heads, not verdicts about the embedding. `fit` now
-  reports `convergence` per head, and takes a `tolerance` it will stop at:
-  d=64/n=200 reaches 1e-6 after 887 epochs (30ms), d=768/n=500 reaches
-  7.7e-5 after 3000 epochs (2.4s). A head reporting `converged: false` has
-  not measured linear readability; it has run out of epochs.
+- **The default epoch budget is sized for small problems.** 300 epochs of
+  full-batch descent leave the demo's two 6-D heads at gradient norms
+  1.2e-5 and 6.9e-4. At d=64 the norm is 1.1e-3, and at d=768 - the width
+  of a sentence embedding - it is 2.4e-3, two hundred times further from
+  stationarity. Those are underfit heads, not verdicts about the
+  embedding. `fit` reports `convergence` per head and takes a `tolerance`
+  it stops at; the d=64 case reaches 1e-6 in about 1,100 epochs. A head
+  whose `converged` is false has not measured linear readability, it has
+  run out of epochs.
 - One-vs-rest per label; it does not model label correlations.
 - You bring the embeddings and the splits. probe-heads does the training,
   threshold selection, and scoring; it does not compute features or choose
@@ -144,23 +148,27 @@ npm run typecheck
 ```
 
 Install: `npm install @m-sanchez/probe-heads` (or a pinned git tag,
-`github:m-sanchez/probe-heads#v1.0.2`; CI proves the packed tarball
+`github:m-sanchez/probe-heads#v2.0.0`; CI proves the packed tarball
 imports). Node 22.18+, zero runtime dependencies.
 
 ## The tests are the point
 
 | Test | Claim |
 | :-- | :-- |
-| the probe learns a separable label to high holdout F1 | the training actually works |
-| a probe on pure noise scores like a result and clears nothing | the headline F1 alone is not evidence, and the report says so |
-| a probe on signal clears its control | selectivity is the part of the score that is the property |
-| the returned head is stationary to the tolerance that was asked for | a low score is a finding, not an unfinished optimisation |
-| the README demo block is what npm run demo prints | the numbers above are output, not decoration |
-| same data in, bit-identical model out | `fit` is pure: no state carries between calls |
-| fit reproduces the golden fixture exactly | the weights are the same doubles across Node versions and across time |
+| a probe on pure noise scores like a result and clears nothing | an F1 on its own is not evidence, and the report now says so |
+| a probe on signal clears its control | selectivity is the part of a score that is about the embedding |
+| the control permutation is a bijection and never the identity | the control is a permutation, not a resample: class balance is exact |
+| the control is not a restatement of the floor | the floor and the control are two different numbers, both worth printing |
+| fit reproduces the golden fixture exactly | the same doubles across Node versions and across time |
 | fit standardises on train only: a shifted val cannot move the scaler | no split outside train enters the scaler, asserted on `fit` |
 | fit trains heads on train only: flipping every val label moves no weight | no label outside train can move a weight |
-| threshold selection beats a fixed 0.5 on a rare label | the cut is chosen where it matters |
-| nothing in the holdout can change the model | the guarantee, tested by mutating it and re-checking |
-| a constant feature does not divide by zero | the scaler is numerically safe |
-| sigmoid is stable at the extremes | no overflow between the model and the metric |
+| nothing in the holdout can change the trained model | the guarantee, tested by mutating the holdout and re-checking |
+| the returned head is stationary to the tolerance that was asked for | a low score is a finding, not an unfinished optimisation |
+| evaluate refuses a holdout of the wrong feature width | a shape bug is an error, never a result |
+| the probe learns a separable label to high holdout F1 | the training actually works |
+| the README demo block is what npm run demo prints | the numbers above are output, not decoration |
+
+[CLAIMS.md](CLAIMS.md) maps every falsifiable claim in this README, and in
+the package description, to the test that enforces it - file and test name.
+Anything that could not be enforced was narrowed or removed rather than
+left standing.

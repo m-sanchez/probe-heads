@@ -46,18 +46,27 @@ const golden = JSON.parse(
 const examples = (b: Block): Example[] =>
   b.features.map((features, i) => ({ features, labels: b.labels[i] }));
 
+function reproduce(index: number, name: string): void {
+  const c = golden.cases[index];
+  assert.equal(c.name, name, 'the fixture case moved out from under this test');
+  const model = fit(examples(c.train), examples(c.val), c.options);
+  // exact, not approximate: every weight, bias, threshold, scaler statistic
+  // and convergence number, to the last bit
+  assert.deepStrictEqual(model, c.model);
+}
+
 test('the fixture covers both a default run and a wider, retuned one', () => {
   assert.equal(golden.cases.length, 2);
   assert.deepEqual(golden.cases[0].options, {});
   assert.equal(golden.cases[0].model.dim, 6);
   assert.equal(golden.cases[1].model.dim, 32);
+  assert.notDeepEqual(golden.cases[1].options, {});
 });
 
-for (const c of golden.cases) {
-  test(`fit reproduces the golden fixture exactly: ${c.name}`, () => {
-    const model = fit(examples(c.train), examples(c.val), c.options);
-    // exact, not approximate: every weight, bias, threshold, scaler
-    // statistic and convergence number, to the last bit
-    assert.deepStrictEqual(model, c.model);
-  });
-}
+test('fit reproduces the golden fixture exactly: 6 features, 2 labels, every default', () => {
+  reproduce(0, '6 features, 2 labels, every default');
+});
+
+test('fit reproduces the golden fixture exactly: 32 features, 1 label, non-default hyperparameters', () => {
+  reproduce(1, '32 features, 1 label, non-default hyperparameters');
+});

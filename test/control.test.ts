@@ -74,6 +74,9 @@ test('a probe on signal clears its control', () => {
     `F1 ${r.f1.toFixed(3)} against control ${controlF1(r.f1, r.selectivity).toFixed(3)}`
   );
   assert.ok((ev.macroSelectivity as number) > 0.05);
+  // the numbers the README quotes
+  assert.equal(r.f1.toFixed(3), '0.787');
+  assert.equal(controlF1(r.f1, r.selectivity).toFixed(3), '0.669');
 });
 
 test('a probe on pure noise scores like a result and clears nothing', () => {
@@ -87,6 +90,13 @@ test('a probe on pure noise scores like a result and clears nothing', () => {
     Math.abs(r.selectivity as number) < 0.05,
     `noise selectivity ${(r.selectivity as number).toFixed(3)} should be about zero`
   );
+  // the numbers the README quotes
+  assert.equal(r.f1.toFixed(3), '0.671');
+  assert.equal((r.selectivity as number).toFixed(3), '0.000');
+  // and the mechanism the README describes: with nothing to predict, the
+  // threshold search collapses to the lowest cut, calls everything
+  // positive, and lands exactly on the always-positive floor
+  assert.equal(controlF1(r.f1, r.selectivity).toFixed(6), r.baselineF1.toFixed(6));
 });
 
 test('the always-positive floor is 2b/(1+b) on the holdout base rate', () => {

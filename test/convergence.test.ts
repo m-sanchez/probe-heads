@@ -34,17 +34,16 @@ function seeded(seed: number): () => number {
   };
 }
 
-const DIM = 64;
 const L2 = 1e-3;
 
-/** A d=64 problem: wide enough that 300 epochs of full-batch descent do
+/** A wide problem: at d=64 and above, 300 epochs of full-batch descent do
  * not get near stationarity, which is the realistic embedding case. */
-function wide(n: number, seed: number): Example[] {
+function wide(n: number, seed: number, dim = 64): Example[] {
   const rand = seeded(seed);
-  const w = Array.from({ length: DIM }, (_, j) => ((j % 7) - 3) / 3);
+  const w = Array.from({ length: dim }, (_, j) => ((j % 7) - 3) / 3);
   const out: Example[] = [];
   for (let i = 0; i < n; i++) {
-    const features = Array.from({ length: DIM }, () => rand() * 4 - 2);
+    const features = Array.from({ length: dim }, () => rand() * 4 - 2);
     const z = features.reduce((s, x, j) => s + w[j] * x, 0) / 8;
     out.push({ features, labels: [1 / (1 + Math.exp(-z)) > rand()] });
   }
@@ -91,6 +90,19 @@ test('the returned head is stationary to the tolerance that was asked for', () =
     model.convergence[0].epochs < 5000,
     `ran the full budget (${model.convergence[0].epochs}) instead of stopping at the tolerance`
   );
+  // the README says "about 1,100 epochs" for this shape
+  const taken = model.convergence[0].epochs;
+  assert.ok(taken > 800 && taken < 1400, `took ${taken} epochs`);
+});
+
+test('at embedding width the default budget is nowhere near stationary', () => {
+  // d=768, the width of a sentence-transformer embedding. The README's
+  // Honest limits section quotes this number.
+  const train = wide(200, 21, 768);
+  const val = wide(70, 22, 768);
+  const model = fit(train, val);
+  const { X, y } = trainingMatrix(model, train);
+  assert.equal(gradNorm(model.heads[0], X, y, L2).toExponential(1), '2.4e-3');
 });
 
 test('fit says so when the epoch budget runs out short of the tolerance', () => {
@@ -112,6 +124,8 @@ test('fit says so when the epoch budget runs out short of the tolerance', () => 
   assert.ok(norm > tolerance, 'pick a harder case: this one converges by default');
   assert.equal(model.convergence[0].epochs, 300);
   assert.equal(model.convergence[0].finalGradNorm, norm);
+  // the number the README's Honest limits section quotes for d=64
+  assert.equal(norm.toExponential(1), '1.1e-3');
 });
 
 test('the reported gradient norm is the real one at the returned weights', () => {

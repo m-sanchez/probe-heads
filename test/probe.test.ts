@@ -109,6 +109,17 @@ test('fit trains heads on train only: flipping every val label moves no weight',
   assert.notDeepEqual(a.thresholds, b.thresholds);
 });
 
+test('one-vs-rest: no label can move another label head', () => {
+  const train = makeData(300, 21);
+  const val = makeData(120, 22);
+  const flipSecond = (xs: Example[]): Example[] =>
+    xs.map((e) => ({ features: e.features, labels: [e.labels[0], !e.labels[1]] }));
+  const a = fit(train, val);
+  const b = fit(flipSecond(train), flipSecond(val));
+  assert.deepEqual(a.heads[0], b.heads[0], 'label 1 reached the label 0 head');
+  assert.notDeepEqual(a.heads[1], b.heads[1]);
+});
+
 test('threshold selection beats a fixed 0.5 on a rare label', () => {
   // scores high for positives but not above 0.5; 0.5 would miss them all
   const scores = [0.45, 0.48, 0.44, 0.1, 0.12, 0.09, 0.11, 0.08, 0.07, 0.06];
