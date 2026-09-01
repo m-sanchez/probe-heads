@@ -16,7 +16,7 @@
 import { fitScaler, transform } from './scaler.ts';
 import type { Scaler } from './scaler.ts';
 import { score, trainHead } from './logistic.ts';
-import type { Head, TrainOptions } from './logistic.ts';
+import type { Convergence, Head, TrainOptions } from './logistic.ts';
 import { defaultGrid, f1At, selectThreshold } from './threshold.ts';
 
 export interface Example {
@@ -35,6 +35,10 @@ export interface ProbeModel {
   /** the feature width every vector must have, in `fit`, `predict` and
    * `evaluate` alike */
   dim: number;
+  /** what the optimiser did for each head. A head that stopped a long way
+   * from stationarity is an underfit probe, not a verdict on the
+   * embedding, and this is where you find out which one you have. */
+  convergence: Convergence[];
 }
 
 export interface FitOptions extends TrainOptions {
@@ -101,15 +105,17 @@ export function fit(train: Example[], val: Example[], opts: FitOptions = {}): Pr
 
   const heads: Head[] = [];
   const thresholds: number[] = [];
+  const convergence: Convergence[] = [];
   for (let k = 0; k < labelCount; k++) {
     const yTrain = train.map((e) => (e.labels[k] ? 1 : 0));
-    const head = trainHead(xTrain, yTrain, opts);
-    heads.push(head);
-    const valScores = xVal.map((x) => score(head, x));
+    const trained = trainHead(xTrain, yTrain, opts);
+    heads.push(trained.head);
+    convergence.push(trained.convergence);
+    const valScores = xVal.map((x) => score(trained.head, x));
     const yVal = val.map((e) => (e.labels[k] ? 1 : 0));
     thresholds.push(selectThreshold(valScores, yVal, grid).threshold);
   }
-  return { scaler, heads, thresholds, labelCount, dim };
+  return { scaler, heads, thresholds, labelCount, dim, convergence };
 }
 
 export interface Prediction {

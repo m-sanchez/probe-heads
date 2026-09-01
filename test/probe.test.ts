@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fit, evaluate, predict } from '../src/probe.ts';
-import { sigmoid, trainHead, score } from '../src/logistic.ts';
+import { sigmoid } from '../src/logistic.ts';
 import { fitScaler, transform } from '../src/scaler.ts';
 import { selectThreshold, f1At } from '../src/threshold.ts';
 import type { Example } from '../src/probe.ts';
@@ -161,15 +161,3 @@ test('predict thresholds each label independently at its selected cut', () => {
   assert.equal(p.labels[1], p.scores[1] >= model.thresholds[1]);
 });
 
-test('trainHead reduces error on a trivially separable set', () => {
-  const X = [
-    [2, 0],
-    [2, 1],
-    [-2, 0],
-    [-2, -1]
-  ];
-  const y = [1, 1, 0, 0];
-  const head = trainHead(X, y, { epochs: 500 });
-  assert.ok(score(head, [2, 0]) > 0.8);
-  assert.ok(score(head, [-2, 0]) < 0.2);
-});

@@ -85,6 +85,14 @@ thresholds were chosen on validation; this is the first look at the holdout.
   features can recover, which is exactly the question probes are for. It is
   not a classifier to ship, and a low score means "not linearly readable",
   not "not present".
+- **The default epoch budget is sized for small problems.** Full-batch
+  gradient descent for 300 epochs solves the demo's 6-D objective to a
+  gradient norm of 1.9e-13, but at d=64 it stops at 8.7e-4 and at d=768 at
+  5.6e-3 - underfit heads, not verdicts about the embedding. `fit` now
+  reports `convergence` per head, and takes a `tolerance` it will stop at:
+  d=64/n=200 reaches 1e-6 after 887 epochs (30ms), d=768/n=500 reaches
+  7.7e-5 after 3000 epochs (2.4s). A head reporting `converged: false` has
+  not measured linear readability; it has run out of epochs.
 - One-vs-rest per label; it does not model label correlations.
 - You bring the embeddings and the splits. probe-heads does the training,
   threshold selection, and scoring; it does not compute features or choose
