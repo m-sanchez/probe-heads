@@ -71,15 +71,42 @@ test('training is deterministic: same data in, bit-identical model out', () => {
   assert.deepEqual(a.thresholds, b.thresholds);
 });
 
-test('the scaler is fit on train only: holdout statistics never enter it', () => {
-  const train = [
-    { features: [0, 0], labels: [true] },
-    { features: [2, 2], labels: [false] }
-  ];
-  const scaler = fitScaler(train.map((e) => e.features));
-  assert.deepEqual(scaler.mean, [1, 1]); // mean of train, not of any holdout
-  // a wildly different holdout point is transformed by the TRAIN scaler
-  assert.deepEqual(transform(scaler, [1, 1]), [0, 0]);
+/** The two leakage tests below deliberately assert on `fit`, not on
+ * `fitScaler`. The old test called fitScaler on a literal two-row array and
+ * never invoked the pipeline, so fitting the scaler on train-union-val - or
+ * training the heads on train-union-val - left the whole suite green. These
+ * two fail on either mutation. */
+
+test('fit standardises on train only: a shifted val cannot move the scaler', () => {
+  const train = makeData(300, 11);
+  // val features are 1000 away from train; if val entered the scaler fit at
+  // all, the means would move by hundreds
+  const valShifted = makeData(120, 12).map((e) => ({
+    features: e.features.map((f) => f + 1000),
+    labels: e.labels
+  }));
+  const model = fit(train, valShifted);
+  assert.deepEqual(model.scaler, fitScaler(train.map((e) => e.features)));
+  assert.ok(
+    model.scaler.mean.every((m) => Math.abs(m) < 10),
+    `train means ${model.scaler.mean.join(', ')} - val's +1000 shift leaked in`
+  );
+  // and the train scaler is what val and holdout are measured against
+  assert.deepEqual(transform(model.scaler, model.scaler.mean), model.scaler.mean.map(() => 0));
+});
+
+test('fit trains heads on train only: flipping every val label moves no weight', () => {
+  const train = makeData(300, 13);
+  const val = makeData(120, 14);
+  const flipped = val.map((e) => ({ features: e.features, labels: e.labels.map((l) => !l) }));
+  const a = fit(train, val);
+  const b = fit(train, flipped);
+  assert.deepEqual(a.heads, b.heads, 'val labels reached head training');
+  assert.deepEqual(a.scaler, b.scaler);
+  // the thresholds DO move, which is what proves the val split is actually
+  // consumed - so the head equality above is a guarantee, not an accident of
+  // val being ignored
+  assert.notDeepEqual(a.thresholds, b.thresholds);
 });
 
 test('threshold selection beats a fixed 0.5 on a rare label', () => {
@@ -105,18 +132,22 @@ test('a constant feature does not divide by zero', () => {
 test('nothing in the holdout can change the trained model', () => {
   const train = makeData(300, 4);
   const val = makeData(100, 5);
-  const holdout = makeData(200, 6);
+  const holdoutA = makeData(200, 6);
+  const holdoutB = makeData(200, 9);
   const model = fit(train, val);
-  // mutating the holdout - even wildly - must not touch the model, because
-  // the holdout was never an input to fit. This is the real guarantee, and
-  // it is what the "kept out of training" claim rests on.
+  // the holdout was never an input to fit, so nothing it contains - and no
+  // number of looks at it - can move the model or contaminate a later
+  // report. This is what the "kept out of training" claim rests on.
   const before = JSON.stringify(model);
-  for (const ex of holdout) {
+  const first = evaluate(model, holdoutA);
+  evaluate(model, holdoutB); // a different holdout in between
+  for (const ex of holdoutB) {
     ex.features = ex.features.map((f) => f * 1000 + 7);
     ex.labels = ex.labels.map((l) => !l);
   }
-  evaluate(model, holdout); // a second evaluation on mutated data
-  assert.equal(JSON.stringify(model), before, 'the model is unchanged by anything the holdout does');
+  evaluate(model, holdoutB); // and a wildly mutated one
+  assert.equal(JSON.stringify(model), before, 'the model is unchanged by anything a holdout does');
+  assert.deepEqual(evaluate(model, holdoutA), first, 'evaluate carries no state between calls');
 });
 
 test('predict thresholds each label independently at its selected cut', () => {

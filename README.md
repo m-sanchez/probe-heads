@@ -109,7 +109,8 @@ imports). Node 22.18+, zero runtime dependencies.
 | :-- | :-- |
 | the probe learns a separable label to high holdout F1 | the training actually works |
 | same data in, bit-identical model out | reproducible by construction, not by luck |
-| the scaler is fit on train only | the holdout's statistics never leak into training |
+| fit standardises on train only: a shifted val cannot move the scaler | no split outside train enters the scaler, asserted on `fit` |
+| fit trains heads on train only: flipping every val label moves no weight | no label outside train can move a weight |
 | threshold selection beats a fixed 0.5 on a rare label | the cut is chosen where it matters |
 | nothing in the holdout can change the model | the guarantee, tested by mutating it and re-checking |
 | a constant feature does not divide by zero | the scaler is numerically safe |
