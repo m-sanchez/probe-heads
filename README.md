@@ -63,6 +63,14 @@ thresholds were chosen on validation; this is the first look at the holdout.
   probability; the yes/no cut is chosen to maximise F1 on validation
   (0.5 is rarely right for a rare label), never on train and never on the
   holdout.
+- **Fail closed on shape.** The model records the feature width it was fit
+  on, and every split is checked against it. A holdout of the wrong width
+  used to return `macroF1: 0` - a shape bug served as the conclusion "not
+  linearly readable". It now throws, as does a ragged feature matrix, a
+  prediction vector of the wrong length, an empty validation split, and a
+  validation label with only one class present (there is no
+  F1-maximising cut to select, and the search would return an artefact of
+  the grid).
 - **The holdout is kept out of training.** It is not a parameter of `fit`:
   scaling, head training, and threshold selection are confined to train
   and validation, so the holdout cannot inform the model. `evaluate` is a

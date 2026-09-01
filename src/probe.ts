@@ -5,7 +5,13 @@
  * standardises on train, trains a head per label on train, and selects
  * each label's threshold on val. The holdout is not an argument to `fit`;
  * it goes to `evaluate`, once, at the end. A frozen embedding in, an
- * honest per-label report out, the same every run. */
+ * honest per-label report out, the same every run.
+ *
+ * Every split is checked against the model's feature width and label
+ * count, and a validation split that cannot select a threshold (empty, or
+ * a label with only one class present) is rejected rather than quietly
+ * defaulted. A wrong answer that looks like a result is worse than an
+ * error. */
 
 import { fitScaler, transform } from './scaler.ts';
 import type { Scaler } from './scaler.ts';
@@ -26,16 +32,52 @@ export interface ProbeModel {
   /** the val-selected decision threshold per label */
   thresholds: number[];
   labelCount: number;
+  /** the feature width every vector must have, in `fit`, `predict` and
+   * `evaluate` alike */
+  dim: number;
 }
 
 export interface FitOptions extends TrainOptions {
   thresholdGrid?: number[];
 }
 
-function assertConsistent(examples: Example[], labelCount: number): void {
-  for (const e of examples) {
+function assertConsistent(
+  examples: Example[],
+  labelCount: number,
+  dim: number,
+  split: string
+): void {
+  for (let i = 0; i < examples.length; i++) {
+    const e = examples[i];
     if (e.labels.length !== labelCount) {
-      throw new Error(`every example needs ${labelCount} labels, got ${e.labels.length}`);
+      throw new Error(
+        `${split} example ${i} has ${e.labels.length} labels, the model expects ${labelCount}`
+      );
+    }
+    if (e.features.length !== dim) {
+      throw new Error(
+        `${split} example ${i} has ${e.features.length} features, the model expects ${dim}`
+      );
+    }
+  }
+}
+
+/** A validation split has to be able to answer the question it is asked:
+ * which cut maximises F1 for this label. With no positives (or no
+ * negatives) it cannot, and the search would return an artefact of the
+ * grid. */
+function assertSelectable(val: Example[], labelCount: number): void {
+  if (val.length === 0) {
+    throw new Error('validation split is empty: thresholds are selected on validation data');
+  }
+  for (let k = 0; k < labelCount; k++) {
+    let positives = 0;
+    for (const e of val) if (e.labels[k]) positives++;
+    if (positives === 0) {
+      throw new Error(`validation label ${k} has no positive examples: no threshold to select`);
+    }
+    if (positives === val.length) {
+      throw new Error(`validation label ${k} has no negative examples: no threshold to select`);
     }
   }
 }
@@ -45,8 +87,12 @@ function assertConsistent(examples: Example[], labelCount: number): void {
 export function fit(train: Example[], val: Example[], opts: FitOptions = {}): ProbeModel {
   if (train.length === 0) throw new Error('training split is empty');
   const labelCount = train[0].labels.length;
-  assertConsistent(train, labelCount);
-  assertConsistent(val, labelCount);
+  if (labelCount === 0) throw new Error('training examples carry no labels');
+  const dim = train[0].features.length;
+  if (dim === 0) throw new Error('training examples carry no features');
+  assertConsistent(train, labelCount, dim, 'training');
+  assertConsistent(val, labelCount, dim, 'validation');
+  assertSelectable(val, labelCount);
 
   const scaler = fitScaler(train.map((e) => e.features));
   const xTrain = train.map((e) => transform(scaler, e.features));
@@ -59,19 +105,18 @@ export function fit(train: Example[], val: Example[], opts: FitOptions = {}): Pr
     const yTrain = train.map((e) => (e.labels[k] ? 1 : 0));
     const head = trainHead(xTrain, yTrain, opts);
     heads.push(head);
-    if (val.length > 0) {
-      const valScores = xVal.map((x) => score(head, x));
-      const yVal = val.map((e) => (e.labels[k] ? 1 : 0));
-      thresholds.push(selectThreshold(valScores, yVal, grid).threshold);
-    } else {
-      thresholds.push(0.5);
-    }
+    const valScores = xVal.map((x) => score(head, x));
+    const yVal = val.map((e) => (e.labels[k] ? 1 : 0));
+    thresholds.push(selectThreshold(valScores, yVal, grid).threshold);
   }
-  return { scaler, heads, thresholds, labelCount };
+  return { scaler, heads, thresholds, labelCount, dim };
 }
 
 export interface Prediction {
-  /** probability per label */
+  /** the head's raw sigmoid output per label. It is a score, not a
+   * calibrated probability: the head is L2-regularised and the cut is
+   * chosen away from 0.5, so rank it, threshold it, but do not read it as
+   * "70% likely". */
   scores: number[];
   /** thresholded decision per label */
   labels: boolean[];
@@ -101,7 +146,7 @@ export interface Evaluation {
 
 /** Evaluate on the holdout, once, at the val-selected thresholds. */
 export function evaluate(model: ProbeModel, holdout: Example[]): Evaluation {
-  assertConsistent(holdout, model.labelCount);
+  assertConsistent(holdout, model.labelCount, model.dim, 'holdout');
   const xs = holdout.map((e) => transform(model.scaler, e.features));
   const perLabel: LabelReport[] = [];
   let microTp = 0;

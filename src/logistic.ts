@@ -14,10 +14,19 @@ export function sigmoid(z: number): number {
   return z >= 0 ? 1 / (1 + Math.exp(-z)) : Math.exp(z) / (1 + Math.exp(z));
 }
 
-export function score(head: Head, x: number[]): number {
+/** The linear pre-activation. Kept separate from `score` so the training
+ * loop can reuse the exact same accumulation order. */
+function preActivation(head: Head, x: number[]): number {
   let z = head.bias;
   for (let j = 0; j < x.length; j++) z += head.weights[j] * x[j];
-  return sigmoid(z);
+  return z;
+}
+
+export function score(head: Head, x: number[]): number {
+  if (x.length !== head.weights.length) {
+    throw new Error(`feature vector has ${x.length} values, the head expects ${head.weights.length}`);
+  }
+  return sigmoid(preActivation(head, x));
 }
 
 export interface TrainOptions {
@@ -27,25 +36,42 @@ export interface TrainOptions {
   l2?: number;
 }
 
+/** Reject anything whose shape makes the answer meaningless. */
+function assertTrainable(features: number[][], labels: number[]): number {
+  if (features.length === 0) throw new Error('cannot train a head on no examples');
+  if (features.length !== labels.length) {
+    throw new Error(`got ${features.length} rows and ${labels.length} labels`);
+  }
+  const dim = features[0].length;
+  if (dim === 0) throw new Error('cannot train a head on zero-width feature vectors');
+  for (let i = 0; i < features.length; i++) {
+    if (features[i].length !== dim) {
+      throw new Error(
+        `ragged features: row 0 has width ${dim}, row ${i} has width ${features[i].length}`
+      );
+    }
+  }
+  return dim;
+}
+
 /** Fit one head to standardised features and 0/1 labels. */
 export function trainHead(
   features: number[][],
   labels: number[],
   opts: TrainOptions = {}
 ): Head {
+  const dim = assertTrainable(features, labels);
   const epochs = opts.epochs ?? 300;
   const lr = opts.learningRate ?? 0.5;
   const l2 = opts.l2 ?? 1e-3;
   const n = features.length;
-  const dim = n > 0 ? features[0].length : 0;
   const head: Head = { weights: new Array(dim).fill(0), bias: 0 };
-  if (n === 0) return head;
 
   for (let epoch = 0; epoch < epochs; epoch++) {
     const gradW = new Array(dim).fill(0);
     let gradB = 0;
     for (let i = 0; i < n; i++) {
-      const p = score(head, features[i]);
+      const p = sigmoid(preActivation(head, features[i]));
       const err = p - labels[i];
       for (let j = 0; j < dim; j++) gradW[j] += err * features[i][j];
       gradB += err;
