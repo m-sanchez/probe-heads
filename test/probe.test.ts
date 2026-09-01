@@ -102,11 +102,21 @@ test('a constant feature does not divide by zero', () => {
   assert.ok(Number.isFinite(transform(scaler, [5, 2])[0]));
 });
 
-test('the holdout is not an argument to fit: the API keeps it out', () => {
-  // fit's signature takes (train, val, opts) only; evaluate takes holdout.
-  // This test documents the discipline as an executable expectation.
-  assert.equal(fit.length, 2, 'fit accepts train and val (opts is optional)');
-  assert.equal(evaluate.length, 2, 'evaluate accepts a model and the holdout');
+test('nothing in the holdout can change the trained model', () => {
+  const train = makeData(300, 4);
+  const val = makeData(100, 5);
+  const holdout = makeData(200, 6);
+  const model = fit(train, val);
+  // mutating the holdout - even wildly - must not touch the model, because
+  // the holdout was never an input to fit. This is the real guarantee, and
+  // it is what the "kept out of training" claim rests on.
+  const before = JSON.stringify(model);
+  for (const ex of holdout) {
+    ex.features = ex.features.map((f) => f * 1000 + 7);
+    ex.labels = ex.labels.map((l) => !l);
+  }
+  evaluate(model, holdout); // a second evaluation on mutated data
+  assert.equal(JSON.stringify(model), before, 'the model is unchanged by anything the holdout does');
 });
 
 test('predict thresholds each label independently at its selected cut', () => {

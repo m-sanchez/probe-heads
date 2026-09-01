@@ -8,7 +8,7 @@
 
 Reproducible probing of frozen embeddings: deterministic one-vs-rest
 logistic heads, leakage-safe scaling, thresholds chosen on validation, the
-holdout touched once. Zero dependencies.
+holdout kept out of training. Zero dependencies.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
 
@@ -56,8 +56,13 @@ thresholds were chosen on validation; this is the first look at the holdout.
   probability; the yes/no cut is chosen to maximise F1 on validation
   (0.5 is rarely right for a rare label), never on train and never on the
   holdout.
-- **The holdout is spent once.** It is not a parameter of `fit`. The type
-  keeps the final measurement out of the loop where it would get peeked.
+- **The holdout is kept out of training.** It is not a parameter of `fit`:
+  scaling, head training, and threshold selection are confined to train
+  and validation, so the holdout cannot inform the model. `evaluate` is a
+  separate, explicit step - a stateless function you call when you are
+  ready to measure. (It does not *enforce* a single call; the guarantee is
+  that nothing the holdout contains can change the model, not that you can
+  only look once.)
 
 ## Honest limits
 
@@ -79,7 +84,7 @@ npm run demo
 npm run typecheck
 ```
 
-Install: `npm install github:m-sanchez/probe-heads#v1.0.0` (not yet on npm;
+Install: `npm install github:m-sanchez/probe-heads#v1.0.1` (not yet on npm;
 CI proves the packed tarball imports). Node 22.18+, zero runtime
 dependencies.
 
@@ -91,6 +96,6 @@ dependencies.
 | same data in, bit-identical model out | reproducible by construction, not by luck |
 | the scaler is fit on train only | the holdout's statistics never leak into training |
 | threshold selection beats a fixed 0.5 on a rare label | the cut is chosen where it matters |
-| the holdout is not an argument to fit | the discipline is enforced by the signature |
+| nothing in the holdout can change the model | the guarantee, tested by mutating it and re-checking |
 | a constant feature does not divide by zero | the scaler is numerically safe |
 | sigmoid is stable at the extremes | no overflow between the model and the metric |
