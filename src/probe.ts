@@ -118,6 +118,52 @@ export function fit(train: Example[], val: Example[], opts: FitOptions = {}): Pr
   return { scaler, heads, thresholds, labelCount, dim, convergence };
 }
 
+/** The permutation the control probe uses: p(i) = (stride * i + 1) mod n,
+ * where stride is the smallest integer >= 7 that is coprime with n, so p
+ * is a bijection and never the identity. It is arithmetic, not sampling -
+ * there is no RNG anywhere in this package and a control run is exactly as
+ * reproducible as the real one.
+ *
+ * It is a permutation of rows, so every label keeps its class balance and
+ * its correlations with the other labels exactly; only the link between a
+ * feature vector and its labels is broken. If your rows arrive in an order
+ * that this permutation happens to line up with - sorted by label, say -
+ * shuffle them once before splitting, or the control is not a null. */
+export function controlPermutation(n: number): number[] {
+  if (n <= 0) return [];
+  let stride = 7;
+  while (gcd(stride, n) !== 1) stride++;
+  const p = new Array<number>(n);
+  for (let i = 0; i < n; i++) p[i] = (stride * i + 1) % n;
+  return p;
+}
+
+function gcd(a: number, b: number): number {
+  while (b !== 0) {
+    const t = a % b;
+    a = b;
+    b = t;
+  }
+  return a;
+}
+
+function permuteLabels(examples: Example[]): Example[] {
+  const p = controlPermutation(examples.length);
+  return examples.map((e, i) => ({ features: e.features, labels: examples[p[i]].labels }));
+}
+
+/** The control probe: the identical pipeline on the identical features,
+ * with the labels permuted so that no feature-label signal survives.
+ *
+ * Its holdout F1 is what this probe scores on a property that is not there
+ * at all. On the demo's data a probe of pure noise still reaches F1 0.671
+ * against real signal's 0.787, because an F1-maximising threshold search
+ * on a balanced label collapses towards predicting everything positive.
+ * Read a probe's F1 against this number, not against zero. */
+export function controlFit(train: Example[], val: Example[], opts: FitOptions = {}): ProbeModel {
+  return fit(permuteLabels(train), permuteLabels(val), opts);
+}
+
 export interface Prediction {
   /** the head's raw sigmoid output per label. It is a score, not a
    * calibrated probability: the head is L2-regularised and the cut is
@@ -140,6 +186,16 @@ export interface LabelReport {
   f1: number;
   /** number of positive examples for this label in the holdout */
   support: number;
+  /** what a classifier that answers "yes" to everything scores on this
+   * label: 2b/(1+b) for base rate b. The floor an F1 has to clear before
+   * it means anything. */
+  baselineF1: number;
+  /** f1 minus the control probe's f1 on the same holdout with the labels
+   * permuted - how much of this score is the property rather than the
+   * class balance and the head's capacity. `null` when `evaluate` was
+   * called without a control, which is itself the honest answer: not
+   * measured. */
+  selectivity: number | null;
 }
 
 export interface Evaluation {
@@ -148,11 +204,32 @@ export interface Evaluation {
   macroF1: number;
   /** F1 pooled over all label decisions */
   microF1: number;
+  /** unweighted mean of the always-positive floor */
+  macroBaselineF1: number;
+  /** macroF1 minus the control's macroF1, or null if no control was given */
+  macroSelectivity: number | null;
 }
 
-/** Evaluate on the holdout, once, at the val-selected thresholds. */
-export function evaluate(model: ProbeModel, holdout: Example[]): Evaluation {
+/** Evaluate on the holdout, once, at the val-selected thresholds.
+ *
+ * Pass the model from `controlFit` as `control` and every label gets a
+ * selectivity: this probe's F1 minus what the same pipeline scores when
+ * the labels carry no signal. The control is scored against the control
+ * task - the holdout labels under the same permutation - which is the
+ * comparison that makes the difference meaningful. */
+export function evaluate(model: ProbeModel, holdout: Example[], control?: ProbeModel): Evaluation {
   assertConsistent(holdout, model.labelCount, model.dim, 'holdout');
+  if (holdout.length === 0) throw new Error('holdout split is empty: there is nothing to report');
+  let controlEval: Evaluation | null = null;
+  if (control) {
+    if (control.labelCount !== model.labelCount || control.dim !== model.dim) {
+      throw new Error(
+        `control probe is ${control.labelCount} labels x ${control.dim} features, ` +
+          `the model is ${model.labelCount} x ${model.dim}`
+      );
+    }
+    controlEval = evaluate(control, permuteLabels(holdout));
+  }
   const xs = holdout.map((e) => transform(model.scaler, e.features));
   const perLabel: LabelReport[] = [];
   let microTp = 0;
@@ -163,7 +240,15 @@ export function evaluate(model: ProbeModel, holdout: Example[]): Evaluation {
     const labels = holdout.map((e) => (e.labels[k] ? 1 : 0));
     const point = f1At(scores, labels, model.thresholds[k]);
     const support = labels.reduce<number>((a, b) => a + b, 0);
-    perLabel.push({ precision: point.precision, recall: point.recall, f1: point.f1, support });
+    const base = support / holdout.length;
+    perLabel.push({
+      precision: point.precision,
+      recall: point.recall,
+      f1: point.f1,
+      support,
+      baselineF1: (2 * base) / (1 + base),
+      selectivity: controlEval === null ? null : point.f1 - controlEval.perLabel[k].f1
+    });
     for (let i = 0; i < scores.length; i++) {
       const pred = scores[i] >= model.thresholds[k] ? 1 : 0;
       if (pred === 1 && labels[i] === 1) microTp++;
@@ -175,5 +260,12 @@ export function evaluate(model: ProbeModel, holdout: Example[]): Evaluation {
   const microPrec = microTp + microFp === 0 ? 0 : microTp / (microTp + microFp);
   const microRec = microTp + microFn === 0 ? 0 : microTp / (microTp + microFn);
   const microF1 = microPrec + microRec === 0 ? 0 : (2 * microPrec * microRec) / (microPrec + microRec);
-  return { perLabel, macroF1, microF1 };
+  const macroBaselineF1 = perLabel.reduce((s, r) => s + r.baselineF1, 0) / (perLabel.length || 1);
+  return {
+    perLabel,
+    macroF1,
+    microF1,
+    macroBaselineF1,
+    macroSelectivity: controlEval === null ? null : macroF1 - controlEval.macroF1
+  };
 }

@@ -4,7 +4,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "description": "Reproducible probing of frozen embeddings: deterministic one-vs-rest logistic heads, leakage-safe scaling, thresholds chosen on validation, holdout kept out of training.",
+  "description": "Reproducible probing of frozen embeddings: deterministic one-vs-rest logistic heads, leakage-safe scaling, thresholds chosen on validation, holdout kept out of training, every F1 reported against a permuted-label control.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

@@ -27,31 +27,63 @@ a shuffle makes the run unreproducible. probe-heads wires the discipline
 into the shape of the API so those mistakes are hard to make.
 
 ```ts
-import { fit, evaluate } from '@m-sanchez/probe-heads';
+import { controlFit, evaluate, fit } from '@m-sanchez/probe-heads';
 
 // fit sees train and val only: it standardises on train, trains a
 // logistic head per label on train, and picks each label's threshold
 // on val
 const model = fit(train, val, { epochs: 300 });
 
+// the same pipeline on the same features, with the labels permuted: what
+// this probe scores when there is no signal in the labels at all
+const control = controlFit(train, val, { epochs: 300 });
+
 // the holdout is not an argument to fit; it goes here, once, at the end
-const report = evaluate(model, holdout);
-report.perLabel;   // { precision, recall, f1, support } per label
-report.macroF1;    // and micro
+const report = evaluate(model, holdout, control);
+report.perLabel;        // precision, recall, f1, support, baselineF1, selectivity
+report.macroF1;         // and micro, macroBaselineF1, macroSelectivity
+model.convergence;      // per head: epochs, finalLoss, finalGradNorm, converged
 ```
 
 `npm run demo` probes two labels off a frozen 6-D embedding:
 
 ```
-label   threshold   P      R      F1     support
-0       0.30        0.64   0.93   0.76   191
-1       0.35        0.63   0.67   0.65   94
-macro F1 0.703, micro F1 0.725
+two labels probed off a frozen 6-D embedding (balanced, rare)
+
+label  thr   P      R      F1     floor  control  selectivity  support
+0      0.30  0.639  0.927  0.756  0.646  0.646    0.110        191
+1      0.35  0.630  0.670  0.649  0.381  0.381    0.269        94
+
+macro F1 0.703   floor 0.513   control 0.513   selectivity 0.189
+heads stopped at gradient norm 1.2e-5 and 6.9e-4 after 300 and 300 epochs
 thresholds were chosen on validation; this is the first look at the holdout.
+read each F1 against its floor and its control, never against zero.
 ```
+
+Read the macro row across, not down. **0.703** is the headline; **0.513**
+is what this same pipeline scores on the same features when the labels are
+permuted so no signal survives; **0.189** is the difference, and it is the
+only part that is about the embedding. Published unflattering because it is
+the number that means something.
+
+The gap is not a quirk of this dataset. An F1-maximising threshold search
+on a label it cannot predict collapses to the lowest cut in the grid,
+predicts everything positive, and collects recall 1.0 at a precision equal
+to the base rate. Measured on this package's own test data: a probe trained
+on labels drawn independently of the features reaches holdout F1 **0.671**,
+against real signal's 0.787. One number in isolation cannot tell linear
+readability from class balance, which is the only question a probe is
+asked.
 
 ## The discipline, made structural
 
+- **Every F1 comes with its control and its floor.** `controlFit` runs the
+  identical pipeline on the identical features with the labels
+  deterministically permuted, and `evaluate(model, holdout, control)`
+  reports `selectivity` - this probe's F1 minus that one's. `baselineF1` is
+  what a classifier that answers "yes" to everything scores. The
+  permutation is arithmetic, `p(i) = (stride * i + 1) mod n`, so no RNG
+  enters and the control is as reproducible as the probe.
 - **Leakage-safe scaling.** The feature scaler is fit on the training
   split and applied unchanged to val and holdout, so the holdout's
   distribution never informs training.
@@ -116,6 +148,10 @@ imports). Node 22.18+, zero runtime dependencies.
 | Test | Claim |
 | :-- | :-- |
 | the probe learns a separable label to high holdout F1 | the training actually works |
+| a probe on pure noise scores like a result and clears nothing | the headline F1 alone is not evidence, and the report says so |
+| a probe on signal clears its control | selectivity is the part of the score that is the property |
+| the returned head is stationary to the tolerance that was asked for | a low score is a finding, not an unfinished optimisation |
+| the README demo block is what npm run demo prints | the numbers above are output, not decoration |
 | same data in, bit-identical model out | reproducible by construction, not by luck |
 | fit standardises on train only: a shifted val cannot move the scaler | no split outside train enters the scaler, asserted on `fit` |
 | fit trains heads on train only: flipping every val label moves no weight | no label outside train can move a weight |

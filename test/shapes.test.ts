@@ -118,3 +118,11 @@ test('score and trainHead refuse vectors of the wrong width', () => {
   assert.throws(() => trainHead([[1, 2]], [1, 0]), /1 rows and 2 labels/);
   assert.throws(() => trainHead([], []), /no examples/);
 });
+
+test('evaluate refuses an empty holdout', () => {
+  const { train, val } = twoFeature();
+  const model = fit(train, val);
+  // measured before the fix: returned { macroF1: 0, microF1: 0 }, which is not
+  // "the probe scored nothing", it is "you handed it no data"
+  assert.throws(() => evaluate(model, []), /holdout split is empty/);
+});

@@ -1,7 +1,12 @@
 /** npm run demo: probe two labels off a frozen 6-D embedding, with the
- * train/val/holdout discipline the API enforces. Synthetic, seeded. */
+ * train/val/holdout discipline the API enforces. Synthetic, seeded.
+ *
+ * Every F1 is printed next to the two numbers it has to be read against:
+ * the always-positive floor, and the control probe - the identical
+ * pipeline on the identical features with the labels permuted, so any
+ * score it reaches is score with no signal in it. */
 
-import { fit, evaluate } from '../src/probe.ts';
+import { controlFit, evaluate, fit } from '../src/probe.ts';
 import { sigmoid } from '../src/logistic.ts';
 import type { Example } from '../src/probe.ts';
 
@@ -40,16 +45,32 @@ function makeData(n: number, seed: number): Example[] {
   return out;
 }
 
-const model = fit(makeData(600, 1), makeData(200, 2), { epochs: 300 });
-const ev = evaluate(model, makeData(400, 3));
+const train = makeData(600, 1);
+const val = makeData(200, 2);
+const model = fit(train, val, { epochs: 300 });
+const control = controlFit(train, val, { epochs: 300 });
+const ev = evaluate(model, makeData(400, 3), control);
 
+const f = (x: number) => x.toFixed(3).padEnd(6);
 console.log('two labels probed off a frozen 6-D embedding (balanced, rare)\n');
-console.log('label   threshold   P      R      F1     support');
+console.log('label  thr   P      R      F1     floor  control  selectivity  support');
 ev.perLabel.forEach((r, k) => {
+  const controlF1 = r.f1 - (r.selectivity ?? 0);
   console.log(
-    `${String(k).padEnd(7)} ${model.thresholds[k].toFixed(2).padEnd(11)} ` +
-      `${r.precision.toFixed(2)}   ${r.recall.toFixed(2)}   ${r.f1.toFixed(2)}   ${r.support}`
+    `${String(k).padEnd(6)} ${model.thresholds[k].toFixed(2).padEnd(5)} ` +
+      `${f(r.precision)} ${f(r.recall)} ${f(r.f1)} ${f(r.baselineF1)} ${f(controlF1)}   ` +
+      `${f(r.selectivity ?? 0)}       ${r.support}`
   );
 });
-console.log(`\nmacro F1 ${ev.macroF1.toFixed(3)}, micro F1 ${ev.microF1.toFixed(3)}`);
+const controlMacro = ev.macroF1 - (ev.macroSelectivity ?? 0);
+console.log(
+  `\nmacro F1 ${ev.macroF1.toFixed(3)}   floor ${ev.macroBaselineF1.toFixed(3)}   ` +
+    `control ${controlMacro.toFixed(3)}   selectivity ${(ev.macroSelectivity ?? 0).toFixed(3)}`
+);
+console.log(
+  `heads stopped at gradient norm ` +
+    model.convergence.map((c) => c.finalGradNorm.toExponential(1)).join(' and ') +
+    ` after ${model.convergence.map((c) => c.epochs).join(' and ')} epochs`
+);
 console.log('thresholds were chosen on validation; this is the first look at the holdout.');
+console.log('read each F1 against its floor and its control, never against zero.');
