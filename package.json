@@ -1,6 +1,9 @@
 {
-  "name": "probe-heads",
-  "version": "1.0.1",
+  "name": "@m-sanchez/probe-heads",
+  "version": "1.0.2",
+  "publishConfig": {
+    "access": "public"
+  },
   "description": "Reproducible probing of frozen embeddings: deterministic one-vs-rest logistic heads, leakage-safe scaling, thresholds chosen on validation, holdout kept out of training.",
   "type": "module",
   "main": "./dist/index.js",

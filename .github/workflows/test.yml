@@ -23,5 +23,5 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/scratch" && cd "$RUNNER_TEMP/scratch"
           npm init -y > /dev/null
-          npm install "$GITHUB_WORKSPACE"/probe-heads-*.tgz
-          node -e "import('probe-heads').then(m => { if (Object.keys(m).length === 0) throw new Error('empty module'); console.log('import ok'); })"
+          npm install "$GITHUB_WORKSPACE"/m-sanchez-probe-heads-*.tgz
+          node -e "import('@m-sanchez/probe-heads').then(m => { if (Object.keys(m).length === 0) throw new Error('empty module'); console.log('import ok'); })"

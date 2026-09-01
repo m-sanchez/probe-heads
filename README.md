@@ -5,6 +5,7 @@
 ![Dependencies](https://img.shields.io/badge/dependencies-0-B45309)
 [![CI](https://github.com/m-sanchez/probe-heads/actions/workflows/test.yml/badge.svg)](https://github.com/m-sanchez/probe-heads/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
+[![npm](https://img.shields.io/npm/v/@m-sanchez/probe-heads?color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@m-sanchez/probe-heads)
 
 > **In plain English:** this tests what a model actually learned by training a tiny classifier on its internals, keeping the test data strictly separate so the result is not cheating.
 
@@ -14,6 +15,10 @@ holdout kept out of training. Zero dependencies.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
 
+*Provenance: a fresh, dependency-free implementation of standard methods,
+written to test the systems the other tools came from. First published
+2026-08-31.*
+
 A linear probe answers "is this property linearly readable from the
 embedding?" It is a small, honest experiment - and small honest
 experiments are where evaluation hygiene quietly breaks: the scaler is fit
@@ -22,7 +27,7 @@ a shuffle makes the run unreproducible. probe-heads wires the discipline
 into the shape of the API so those mistakes are hard to make.
 
 ```ts
-import { fit, evaluate } from 'probe-heads';
+import { fit, evaluate } from '@m-sanchez/probe-heads';
 
 // fit sees train and val only: it standardises on train, trains a
 // logistic head per label on train, and picks each label's threshold
@@ -86,9 +91,9 @@ npm run demo
 npm run typecheck
 ```
 
-Install: `npm install github:m-sanchez/probe-heads#v1.0.1` (not yet on npm;
-CI proves the packed tarball imports). Node 22.18+, zero runtime
-dependencies.
+Install: `npm install @m-sanchez/probe-heads` (or a pinned git tag,
+`github:m-sanchez/probe-heads#v1.0.2`; CI proves the packed tarball
+imports). Node 22.18+, zero runtime dependencies.
 
 ## The tests are the point
 
