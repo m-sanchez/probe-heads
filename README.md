@@ -6,6 +6,8 @@
 [![CI](https://github.com/m-sanchez/probe-heads/actions/workflows/test.yml/badge.svg)](https://github.com/m-sanchez/probe-heads/actions/workflows/test.yml)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
 
+> **In plain English:** this tests what a model actually learned by training a tiny classifier on its internals, keeping the test data strictly separate so the result is not cheating.
+
 Reproducible probing of frozen embeddings: deterministic one-vs-rest
 logistic heads, leakage-safe scaling, thresholds chosen on validation, the
 holdout kept out of training. Zero dependencies.
