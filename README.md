@@ -90,7 +90,11 @@ asked.
 - **Deterministic training.** Each head is full-batch gradient descent
   from zero init with no shuffling and no randomness: the same data and
   hyperparameters give bit-identical weights every run. A regression is a
-  real regression, not a reseed.
+  real regression, not a reseed. `test/fixtures/golden.json` holds a fixed
+  input matrix and the exact doubles `fit` produced for it, asserted for
+  exact equality on Node 22, 24 and 26 - so a changed default, or float
+  drift between engines, shows up as a reviewable diff instead of quietly
+  invalidating every probe number you have stored.
 - **Thresholds on validation, not the test set.** A logistic head emits a
   probability; the yes/no cut is chosen to maximise F1 on validation
   (0.5 is rarely right for a rare label), never on train and never on the
@@ -152,7 +156,8 @@ imports). Node 22.18+, zero runtime dependencies.
 | a probe on signal clears its control | selectivity is the part of the score that is the property |
 | the returned head is stationary to the tolerance that was asked for | a low score is a finding, not an unfinished optimisation |
 | the README demo block is what npm run demo prints | the numbers above are output, not decoration |
-| same data in, bit-identical model out | reproducible by construction, not by luck |
+| same data in, bit-identical model out | `fit` is pure: no state carries between calls |
+| fit reproduces the golden fixture exactly | the weights are the same doubles across Node versions and across time |
 | fit standardises on train only: a shifted val cannot move the scaler | no split outside train enters the scaler, asserted on `fit` |
 | fit trains heads on train only: flipping every val label moves no weight | no label outside train can move a weight |
 | threshold selection beats a fixed 0.5 on a rare label | the cut is chosen where it matters |
