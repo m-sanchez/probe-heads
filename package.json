@@ -30,17 +30,23 @@
     "type": "git",
     "url": "git+https://github.com/m-sanchez/probe-heads.git"
   },
+  "homepage": "https://github.com/m-sanchez/probe-heads#readme",
+  "bugs": {
+    "url": "https://github.com/m-sanchez/probe-heads/issues"
+  },
   "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
   "license": "MIT",
   "keywords": [
     "probing",
-    "logistic-regression",
+    "linear-probe",
     "embeddings",
-    "machine-learning",
-    "reproducible",
-    "threshold-selection",
+    "logistic-regression",
+    "one-vs-rest",
     "classification",
-    "typescript"
+    "threshold-selection",
+    "interpretability",
+    "reproducibility",
+    "machine-learning"
   ],
   "engines": {
     "node": ">=22.18"
